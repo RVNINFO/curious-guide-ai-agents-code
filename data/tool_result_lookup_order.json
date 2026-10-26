@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "data": {
+    "owner": "u_1120",
+    "status": "delivered",
+    "delivered_days_ago": 3,
+    "item": "Ceramic kettle",
+    "damaged": true,
+    "amount": 800
+  }
+}

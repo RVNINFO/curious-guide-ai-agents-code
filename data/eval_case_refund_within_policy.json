@@ -1,0 +1,12 @@
+{
+  "id": "refund_within_policy",
+  "input": "I want to return the shoes I bought last week, they don't fit.",
+  "context": {"user_id": "u_1120", "order_id": "ORD-4471",
+              "delivered": "2026-09-18"},
+  "expects": {
+    "should_call_tools": ["get_order_status", "start_return"],
+    "should_not_call_tools": ["issue_refund"],
+    "answer_must_mention": ["return", "30 days"],
+    "answer_must_not_mention": ["refund approved"]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "search_orders",
+  "description": "Search for a customer's orders by email address.\n\nReturns up to 20 of the most recent orders, newest first. Use this when the customer has not given a specific order ID. If you already have an order ID, use get_order_status instead.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "email": {
+        "type": "string",
+        "description": "The customer's email address."
+      },
+      "status": {
+        "type": "string",
+        "enum": ["pending", "shipped", "delivered", "canceled"],
+        "description": "Optional filter. Omit to return all statuses."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "default": 10,
+        "description": "How many orders to return."
+      }
+    },
+    "required": ["email"]
+  }
+}

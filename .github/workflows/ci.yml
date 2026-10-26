@@ -1,0 +1,25 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+      # Smoke-run every listing's offline demo so the printed examples never rot.
+      - run: |
+          for m in ch03.l3_1_5_agent_loop ch03.l3_2_3_order_status_tool ch03.l3_3_1_tool_schema \
+                   ch03.l3_3_4_execute_tool_call ch03.l3_5_rag ch03.l3_6_3_generate_valid \
+                   ch03.l3_7_1_human_in_the_loop ch03.l3_8_1_router ch03.l3_8_3_reflection \
+                   ch03.l3_8_5_reviewer ch05.l5_tenant_scoped_refund ch05.l5_tool_result_types \
+                   ch05.l5_11_1_capstone; do
+            echo "== $m" && python -m $m > /dev/null
+          done

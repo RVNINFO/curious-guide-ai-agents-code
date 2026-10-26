@@ -1,0 +1,5 @@
+# Only needed to run listings against real providers (everything else works offline).
+-r requirements.txt
+langchain-anthropic    # model strings like "anthropic:claude-sonnet-4-6"
+langchain-openai       # Listing 3.5.1 (OpenAIEmbeddings)
+langchain-cohere       # Listing 3.5.5 (CohereRerank)

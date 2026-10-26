@@ -1,0 +1,31 @@
+{
+  "specVersion": "1.0",
+  "name": "Inventory Agent",
+  "description": "Checks stock levels and reserves items.",
+  "url": "https://supplier.example.com/a2a",
+  "protocols": ["JSONRPC"],
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": true
+  },
+  "defaultInputModes":  ["text/plain", "application/json"],
+  "defaultOutputModes": ["application/json"],
+  "skills": [
+    {
+      "id": "check_stock",
+      "name": "Check stock levels",
+      "description": "Returns available quantity for a SKU.",
+      "tags": ["inventory", "stock"],
+      "examples": ["Do you have 500 units of SKU-8842?"]
+    },
+    {
+      "id": "reserve_stock",
+      "name": "Reserve stock",
+      "description": "Places a 24-hour hold on inventory.",
+      "tags": ["inventory", "reservation"]
+    }
+  ],
+  "securitySchemes": {
+    "oauth2": { "type": "oauth2", "flows": { "clientCredentials": {} } }
+  }
+}
