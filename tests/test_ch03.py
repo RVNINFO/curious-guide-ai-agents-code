@@ -173,6 +173,21 @@ def test_rag_rerank_wiring_with_fake_compressor():
     assert len(retriever.invoke("Can I return a damaged item after 30 days?")) == 2
 
 
+# ---- 3.5.6 Retrieval metrics ----
+def test_retrieval_metrics_recall_at_k():
+    from ch03.l3_5_6_retrieval_metrics import recall_at_k
+    assert recall_at_k(["a", "b", "c"], {"a", "d"}, k=2) == 0.5
+    assert recall_at_k(["a", "b", "c"], {"a", "b"}, k=2) == 1.0
+    assert recall_at_k(["a", "b", "c"], {"x"}, k=2) == 0.0
+
+
+def test_retrieval_metrics_reciprocal_rank():
+    from ch03.l3_5_6_retrieval_metrics import reciprocal_rank
+    assert reciprocal_rank(["a", "b", "c"], {"b"}) == 0.5
+    assert reciprocal_rank(["a", "b", "c"], {"a"}) == 1.0
+    assert reciprocal_rank(["a", "b", "c"], {"z"}) == 0.0
+
+
 # ---- 3.6.3 ----
 def test_generate_valid_retries_with_error_in_prompt():
     from ch03.l3_6_3_generate_valid import generate_valid
@@ -244,19 +259,17 @@ def test_reviewer_paths():
 
 # ---- 3.11.1 MCP ----
 def test_mcp_server_lists_and_calls_tool():
-    from fastmcp import Client
     from ch03.l3_11_1_mcp_server import mcp
 
     async def go():
-        async with Client(mcp) as c:
-            tools = await c.list_tools()
-            res = await c.call_tool("translate_text", {"text": "Hello", "target_language": "Japanese"})
-            return tools, res
+        tools = await mcp.list_tools()
+        res = await mcp.call_tool("translate_text", {"text": "Hello", "target_language": "Japanese"})
+        return tools, res
 
     tools, res = asyncio.run(go())
     t = tools[0]
     assert t.name == "translate_text" and "Japanese" in t.description
-    assert set(t.input_schema["required"]) == {"text", "target_language"}  # matches the book's tools/list
+    assert set(t.parameters["required"]) == {"text", "target_language"}  # matches the book's tools/list
     assert "こんにちは" in str(res)
     book = json.loads((DATA / "mcp_tools_list.jsonrpc.json").read_text(encoding="utf-8"))
     assert book["response"]["result"]["tools"][0]["name"] == t.name
@@ -273,12 +286,15 @@ def test_a2a_client_async_task_flow():
             return httpx.Response(200, json=card)
         body = json.loads(req.content)
         assert req.headers["authorization"] == "Bearer tok"
+        assert req.headers["a2a-version"] == "1.0"
         if body["method"] == "SendMessage":
-            return httpx.Response(200, json={"result": {"id": "task-1", "status": {"state": "submitted"}}})
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": "req-1",
+                                              "result": {"task": {"id": "task-1", "status": {"state": "TASK_STATE_SUBMITTED"}}}})
         polls["n"] += 1
-        state = "completed" if polls["n"] >= 2 else "working"
-        return httpx.Response(200, json={"result": {"status": {"state": state},
-                                                    "artifacts": [{"name": "stock", "qty": 600}]}})
+        state = "TASK_STATE_COMPLETED" if polls["n"] >= 2 else "TASK_STATE_WORKING"
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": "req-2",
+                                          "result": {"id": "task-1", "status": {"state": state},
+                                                     "artifacts": [{"name": "stock", "qty": 600}]}})
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as c:
         out = ask_agent(c, "https://supplier.example.com", "tok", "500 units?", poll_seconds=0)
@@ -292,7 +308,53 @@ def test_a2a_client_direct_message_flow():
     def handler(req):
         if req.url.path.endswith("agent-card.json"):
             return httpx.Response(200, json=card)
-        return httpx.Response(200, json={"result": {"parts": [{"kind": "text", "text": "yes"}]}})
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": "req-1",
+                                          "result": {"message": {"parts": [{"text": "yes"}]}}})
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as c:
-        assert ask_agent(c, "https://x.example", "t", "q", 0)[0]["text"] == "yes"
+        assert ask_agent(c, "https://supplier.example.com", "t", "q", 0)[0]["text"] == "yes"
+
+
+def test_a2a_client_paused_flow():
+    from ch03.l3_12_3_a2a_client import TaskPaused, ask_agent
+    card = json.loads((DATA / "agent_card.json").read_text(encoding="utf-8"))
+
+    def handler(req):
+        if req.url.path.endswith("agent-card.json"):
+            return httpx.Response(200, json=card)
+        return httpx.Response(200, json={
+            "jsonrpc": "2.0", "id": "req-1",
+            "result": {"task": {
+                "id": "task-paused",
+                "status": {
+                    "state": "TASK_STATE_INPUT_REQUIRED",
+                    "message": {"parts": [{"text": "Which warehouse?"}]}
+                }
+            }}
+        })
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+        with pytest.raises(TaskPaused) as exc:
+            ask_agent(c, "https://supplier.example.com", "t", "q", 0)
+        assert exc.value.state == "TASK_STATE_INPUT_REQUIRED"
+        assert "Which warehouse?" in exc.value.question
+
+
+def test_a2a_client_timeout():
+    from ch03.l3_12_3_a2a_client import ask_agent
+    card = json.loads((DATA / "agent_card.json").read_text(encoding="utf-8"))
+
+    def handler(req):
+        if req.url.path.endswith("agent-card.json"):
+            return httpx.Response(200, json=card)
+        body = json.loads(req.content)
+        if body["method"] == "SendMessage":
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": "req-1",
+                                              "result": {"task": {"id": "task-1", "status": {"state": "TASK_STATE_WORKING"}}}})
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": "req-2",
+                                          "result": {"id": "task-1", "status": {"state": "TASK_STATE_WORKING"}}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+        with pytest.raises(TimeoutError):
+            ask_agent(c, "https://supplier.example.com", "t", "q", poll_seconds=0.01, timeout_seconds=0.02)
+

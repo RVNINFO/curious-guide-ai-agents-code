@@ -26,7 +26,7 @@ def send_email(to: str, body: str) -> dict:
     return {"success": True}
 
 
-def build_agent(model="anthropic:claude-sonnet-4-6"):
+def build_agent(model="anthropic:claude-sonnet-5-5"):
     return create_agent(
         model=model,
         tools=[get_order_status, issue_refund, send_email],

@@ -52,5 +52,5 @@ def score_process(case: dict, tools_called: set, answer: str) -> bool:
 
 if __name__ == "__main__":
     from langchain.chat_models import init_chat_model
-    m = init_chat_model("anthropic:claude-sonnet-4-6")
+    m = init_chat_model("anthropic:claude-sonnet-5-5")
     print(judge(m, "Can I return my kettle?", "Policy: 30-day returns.", "Yes, within 30 days."))

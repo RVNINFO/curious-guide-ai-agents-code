@@ -1,12 +1,15 @@
-# Pinned to the versions the test-suite was last run against (Python 3.13).
-# The book targets the LangChain / LangGraph 1.x line; update these pins deliberately and re-run `pytest`.
+# Pinned to the versions printed in the book (Section 3).
 langchain==1.4.7
 langchain-core==1.7.0
 langchain-classic==1.0.8
-langgraph==1.2.17
+langgraph==1.2.18
 fastmcp==4.1.4
-pydantic==2.14.1
+fastapi==0.162.0
+uvicorn==0.54.0
 httpx==0.28.1
+pydantic==2.14.1
+pytest==9.2.0
+# Test-only dependencies:
 numpy==2.4.6; python_version < "3.12"
 numpy==2.5.4; python_version >= "3.12"
-pytest==9.1.1
+sqlglot>=25.0.0

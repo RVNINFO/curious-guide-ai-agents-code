@@ -20,7 +20,7 @@ class TicketTriage(BaseModel):
 def triage(ticket_text: str, model=None) -> TicketTriage:
     if model is None:  # live mode: any provider:model string works
         from langchain.chat_models import init_chat_model
-        model = init_chat_model("anthropic:claude-sonnet-4-6")
+        model = init_chat_model("anthropic:claude-sonnet-5-5")
     structured_model = model.with_structured_output(TicketTriage)
     return structured_model.invoke(ticket_text)
 

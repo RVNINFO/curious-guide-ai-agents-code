@@ -17,6 +17,10 @@ class Response:
     content: str = ""
     tool_calls: list = field(default_factory=list)
 
+    @property
+    def message(self):
+        return self
+
 
 class FakeModel:
     """Plays back a script of responses. Once the script ends, it repeats the last one."""

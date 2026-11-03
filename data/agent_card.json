@@ -1,31 +1,71 @@
 {
-  "specVersion": "1.0",
+  "version": "1.0.0",
   "name": "Inventory Agent",
   "description": "Checks stock levels and reserves items.",
-  "url": "https://supplier.example.com/a2a",
-  "protocols": ["JSONRPC"],
+  "supportedInterfaces": [
+    {
+      "url": "https://supplier.example.com/a2a",
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0"
+    }
+  ],
   "capabilities": {
     "streaming": true,
     "pushNotifications": true
   },
-  "defaultInputModes":  ["text/plain", "application/json"],
-  "defaultOutputModes": ["application/json"],
+  "defaultInputModes": [
+    "text/plain",
+    "application/json"
+  ],
+  "defaultOutputModes": [
+    "application/json"
+  ],
   "skills": [
     {
       "id": "check_stock",
       "name": "Check stock levels",
       "description": "Returns available quantity for a SKU.",
-      "tags": ["inventory", "stock"],
-      "examples": ["Do you have 500 units of SKU-8842?"]
+      "tags": [
+        "inventory",
+        "stock"
+      ],
+      "examples": [
+        "Do you have 500 units of SKU-8842?"
+      ]
     },
     {
       "id": "reserve_stock",
       "name": "Reserve stock",
       "description": "Places a 24-hour hold on inventory.",
-      "tags": ["inventory", "reservation"]
+      "tags": [
+        "inventory",
+        "reservation"
+      ]
     }
   ],
   "securitySchemes": {
-    "oauth2": { "type": "oauth2", "flows": { "clientCredentials": {} } }
-  }
+    "oauth2": {
+      "oauth2SecurityScheme": {
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "https://auth.supplier.example.com/token",
+            "scopes": {
+              "inventory": "Check and reserve stock"
+            }
+          }
+        }
+      }
+    }
+  },
+  "securityRequirements": [
+    {
+      "schemes": {
+        "oauth2": {
+          "list": [
+            "inventory"
+          ]
+        }
+      }
+    }
+  ]
 }

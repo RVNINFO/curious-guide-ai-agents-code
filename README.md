@@ -6,25 +6,25 @@ for the section → file map.
 ```bash
 python -m venv .venv && source .venv/bin/activate      # Python 3.11+
 pip install -r requirements.txt
-pytest -q                                              # ~50 tests, ~3 s, no API key needed
+pytest -q                                              # 86 tests, ~6 s, no API key needed
 python -m ch05.l5_11_1_capstone                        # the complete agent + evals, offline
 ```
 
 ## Offline by default
 
 Agent listings need a model. To keep the tests fast, free, and deterministic, they run against
-`common/fakes.py`: a scripted chat model that plays back exact tool calls. That proves the parts *you* write -
-tools, limits, approval pauses, tenant checks, eval scoring - but it does **not** prove a real model will choose
+`common/fakes.py` and `ch05/scripted.py`: scripted models that simulate tool execution and responses. That proves the parts *you* write —
+tools, limits, approval pauses, tenant checks, eval scoring — but it does **not** prove a real model will choose
 those tool calls. For that, run live:
 
 ```bash
 pip install -r requirements-live.txt
 cp .env.example .env   # add ANTHROPIC_API_KEY
 export $(grep -v '^#' .env | xargs)
-python -m ch05.l5_11_1_capstone --live     # runs the three evals against a real model
+python -m ch05.l5_11_1_capstone --live     # runs the four evals against a real model
 ```
 
-Model IDs in the listings (`anthropic:claude-sonnet-4-6`, `anthropic:claude-haiku-4-5`) are copied from the book.
+Model IDs in the listings (`anthropic:claude-sonnet-5-5`, `anthropic:claude-haiku-5-5`) are copied from the book.
 Change them in one place per file if your account uses different ones.
 
 ## Where the code differs from the printed page
@@ -36,7 +36,7 @@ production code. Each file's docstring says what was added.
 
 ## Versions
 
-Pinned in `requirements.txt`; CI runs Python 3.11-3.13. The book targets LangChain/LangGraph 1.x; agent
+Pinned in `requirements.txt`; see [TESTED_VERSIONS.md](TESTED_VERSIONS.md). CI runs Python 3.11–3.13. The book targets LangChain/LangGraph 1.x; agent
 frameworks move quickly, so if a listing breaks after an upgrade, check the pins first and open an issue.
 
 ## Exercises

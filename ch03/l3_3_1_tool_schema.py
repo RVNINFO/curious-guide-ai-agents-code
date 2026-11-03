@@ -36,10 +36,14 @@ def search_orders(email: str, status=None, limit=10) -> list[dict]:
     customer has not given a specific order ID. If you already have
     an order ID, use get_order_status instead.
     """
-    rows = db.orders.find({"email": email})
+    query = {"email": email}
     if status:
-        rows = [r for r in rows if r["status"] == status]
-    return rows[::-1][:limit]  # the book elides the body ("..."); this is a minimal one
+        query["status"] = status
+    orders = (db.orders.find(query)
+              .sort("created_at", -1)
+              .limit(limit))
+    return [{"id": o["id"], "status": o["status"],
+             "created": o["created_at"]} for o in orders]
 
 
 if __name__ == "__main__":

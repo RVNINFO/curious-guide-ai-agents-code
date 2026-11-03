@@ -9,8 +9,8 @@ from ch03.l3_2_3_order_status_tool import get_order_status
 from ch03.l3_3_1_tool_schema import search_orders
 
 
-def build_agent(model="anthropic:claude-sonnet-4-6",
-                summary_model="anthropic:claude-haiku-4-5",
+def build_agent(model="anthropic:claude-sonnet-5-5",
+                summary_model="anthropic:claude-haiku-5-5",
                 trigger_tokens: int = 4000, keep_messages: int = 6):
     return create_agent(
         model=model,

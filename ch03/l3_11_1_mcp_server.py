@@ -4,13 +4,17 @@
 from fastmcp import FastMCP
 
 mcp = FastMCP("translation-service")
-PHRASEBOOK = {("hello", "Japanese"): "こんにちは"}  # stand-in for a real service
+
+# stand-in for a real service
+PHRASEBOOK = {("hello", "Japanese"): "こんにちは"}
+
 
 
 @mcp.tool()
 def translate_text(text: str, target_language: str) -> str:
     """Translate text into the target language, for example 'Japanese'."""
-    return PHRASEBOOK.get((text.lower(), target_language), f"[no translation for '{text}']")
+    return PHRASEBOOK.get(
+        (text.lower(), target_language), f"[no translation for '{text}']")
 
 
 if __name__ == "__main__":

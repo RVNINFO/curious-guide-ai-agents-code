@@ -51,7 +51,8 @@ def issue_refund(
         return {"error": "Order not found or not accessible."}
 
     if order.user_id != user_id:
-        return {"error": "This order does not belong to this customer."}
+        return {"error":
+                "This order does not belong to this customer."}
 
     # Refund history must obey the same tenant boundary.
     already = db.refunds.total_for_order(
@@ -61,7 +62,8 @@ def issue_refund(
 
     if amount + already > order.total:
         return {
-            "error": f"Only {order.total - already} remains refundable."
+            "error": (f"Only {order.total - already} "
+                      "remains refundable.")
         }
 
     if amount > Decimal("5000"):
@@ -77,12 +79,13 @@ def issue_refund(
         reason=reason,
         idempotency_key=(
             f"refund:{tenant_id}:"
-            f"{runtime.context.refund_operation_id}"
+            f"{runtime.context.refund_operation_id}:"
+            f"{order_id}:{amount:.2f}"
         ),
     )
 
 
-def build_agent(model="anthropic:claude-sonnet-4-6"):
+def build_agent(model="anthropic:claude-sonnet-5-5"):
     return create_agent(
         model=model,
         tools=[issue_refund],
@@ -91,7 +94,11 @@ def build_agent(model="anthropic:claude-sonnet-4-6"):
 
 
 def run(agent, text: str, ctx: AppContext):
-    return agent.invoke({"messages": [("user", text)]}, context=ctx)
+    # The book's example call, parameterised: the identity comes from `ctx`, never from the model.
+    return agent.invoke(
+        {"messages": [{"role": "user", "content": text}]},
+        context=ctx,
+    )
 
 
 if __name__ == "__main__":

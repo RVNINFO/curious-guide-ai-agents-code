@@ -3,3 +3,4 @@ __pycache__/
 .pytest_cache/
 .venv/
 *.pyc
+A_CURIOUS_GUIDE_TO_AI_AGENTS*.md

@@ -12,6 +12,7 @@ Book section → file → test. "Offline" means it runs with no API key (scripte
 | 3.3.4 | Tool-execution pipeline | `ch03/l3_3_4_execute_tool_call.py` | `test_pipeline_*` | Offline |
 | 3.4.1 | `SummarizationMiddleware` agent | `ch03/l3_4_1_summarization_agent.py` | `test_summarization_*` | Offline + Live |
 | 3.5.1 / 3.5.4 / 3.5.5 | Embeddings, filtered search, reranking | `ch03/l3_5_rag.py` | `test_rag_*` | Offline (fake embeddings) + Live (OpenAI, Cohere) |
+| 3.5.6 | Retrieval metrics (Recall@k, MRR) | `ch03/l3_5_6_retrieval_metrics.py` | `test_retrieval_metrics_*` | Offline |
 | 3.6.1 | `TodoListMiddleware` planning | `ch03/l3_6_1_todo_planning.py` | `test_todo_planning_agent_*` | Offline + Live |
 | 3.6.3 | `generate_valid` self-correction | `ch03/l3_6_3_generate_valid.py` | `test_generate_valid_*` | Offline |
 | 3.7.1 | Human-in-the-loop approval | `ch03/l3_7_1_human_in_the_loop.py` | `test_hitl_*` | Offline + Live |
@@ -23,14 +24,15 @@ Book section → file → test. "Offline" means it runs with no API key (scripte
 | 3.12.3 | A2A client | `ch03/l3_12_3_a2a_client.py` | `test_a2a_client_*` | Offline (mock transport) |
 | 3.4.3 | Memory record schema | `data/memory_record.json` | `test_agent_card_and_memory_record_shapes` | Data |
 | 4.2.2 / 4.2.3 | Eval case + LLM-judge prompt | `ch04/l4_2_3_llm_judge.py`, `data/eval_case_*.json` | `test_judge_*`, `test_process_scoring_*` | Offline + Live |
+| 4.2.9 | Pass rates / Pass@n | `ch04/l4_2_9_pass_rates.py` | `test_pass_rates_*` | Offline |
 | 4.x | Cross-tenant eval case + test | `data/eval_case_cross_tenant.json`, `ch05/harness.py` | `test_cross_tenant_refund_is_denied` | Offline |
 | 5.x | Tenant-scoped refund tool | `ch05/l5_tenant_scoped_refund.py`, `ch05/adapters.py` | `test_refund_rules`, `test_same_tenant_*` | Offline + Live |
 | 5.x | Typed tool results | `ch05/l5_tool_result_types.py` | `test_tool_result_types_*` | Offline |
 | 5.3 | Step-3 tool result JSON | `data/tool_result_lookup_order.json` | `test_data_files_are_valid_json` | Data |
+| 5.8.4 | Progress events (FastAPI SSE) | `ch05/l5_8_4_progress_events.py` | `test_progress_events_*` | Offline |
+| 5.9.4 | SQL validator (sqlglot) | `ch05/l5_9_4_validate_query.py` | `test_validate_query_*` | Offline |
 | 5.11.1 | Complete agent (tools, approval, evals) | `ch05/l5_11_1_capstone.py`, `ch05/scripted.py` | `test_capstone_*` | Offline + Live (`--live`) |
 | Ex. 3 | Agent-loop starter / solution | `exercises/ex_3_1_5_*`, `solutions/ex_3_1_5_*` | `test_exercise_agent_loop_*` | Offline |
 | Ex. 4.2 | Eval scoring starter / solution | `exercises/ex_4_*`, `solutions/ex_4_*` | `test_exercise_score_case_*` | Offline |
 | Ex. 5.x | Refund-window starter / solution | `exercises/ex_5_*`, `solutions/ex_5_*` | `test_exercise_refund_window_*` | Offline |
-
-Section numbers for 3.4.3, 3.12.2, 4.x and 5.x items are approximate; confirm them against the final
-manuscript when you add the "Listing" captions (see `BOOK_EDITS.md`).
+| App. 6 | Budget guard (step/cost limit) | `solutions/ex_6_budget_guard.py` | `test_budget_guard` | Offline |

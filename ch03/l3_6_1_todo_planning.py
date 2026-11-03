@@ -26,7 +26,7 @@ def draft_report(notes: str) -> str:
     return f"REPORT: {notes}"
 
 
-def build_agent(model="anthropic:claude-sonnet-4-6"):
+def build_agent(model="anthropic:claude-sonnet-5-5"):
     return create_agent(
         model=model,
         tools=[search_docs, run_query, draft_report],
