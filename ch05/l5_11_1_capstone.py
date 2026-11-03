@@ -29,6 +29,7 @@ class AppContext:
     """Identity supplied by the application after login.
     The model never sets it."""
     user_id: str
+    refund_operation_id: str = "op-default"
 
 
 ORDERS = {
@@ -75,11 +76,12 @@ def _refundable_balance(order_id):
     return ORDERS[order_id]["amount"] - refunded
 
 
-def _idempotency_key(order_id, amount):
+def _idempotency_key(order_id, amount, operation_id="op-default"):
     # Derived in code
     # so a model retry of the same call cannot pay twice.
+    # Includes operation_id so two genuine equal partial refunds do not collapse.
     return "refund-" + hashlib.sha256(
-        f"{order_id}:{amount:.2f}".encode()).hexdigest()[:16]
+        f"{operation_id}:{order_id}:{amount:.2f}".encode()).hexdigest()[:16]
 
 
 def _public(record: dict) -> dict:
@@ -88,7 +90,7 @@ def _public(record: dict) -> dict:
     return {**record, "amount": f"{record['amount']:.2f}"}
 
 
-def _issue(order_id, amount, user_id):
+def _issue(order_id, amount, user_id, operation_id="op-default"):
     """Shared checks and the write.
     Both refund tools go through here, so an
     amount edited at the approval step is checked again."""
@@ -100,7 +102,7 @@ def _issue(order_id, amount, user_id):
         return _error("INVALID_AMOUNT",
                       "Amount must be greater than zero.")
 
-    key = _idempotency_key(order_id, amount)
+    key = _idempotency_key(order_id, amount, operation_id)
     if key in REFUNDS:
         # replay: return the original result, do not pay again
         return {"success": True,
@@ -153,7 +155,8 @@ def issue_refund(order_id: str, amount: Decimal,
         # the rule lives in code, not in the prompt
         return _error("NEEDS_APPROVAL",
                       "Amount exceeds the automatic limit.")
-    return _issue(order_id, amount, runtime.context.user_id)
+    op_id = getattr(runtime.context, "refund_operation_id", "op-default")
+    return _issue(order_id, amount, runtime.context.user_id, op_id)
 
 
 @tool
@@ -161,7 +164,8 @@ def issue_large_refund(order_id: str, amount: Decimal,
                        runtime: ToolRuntime[AppContext]) -> dict:
     """Issue a refund above ₹5,000.
     Runs only after a human approves."""
-    return _issue(order_id, amount, runtime.context.user_id)
+    op_id = getattr(runtime.context, "refund_operation_id", "op-default")
+    return _issue(order_id, amount, runtime.context.user_id, op_id)
 
 
 # ---- as printed in the book: The agent ---------------------------------------
@@ -189,18 +193,23 @@ def build_agent(model="anthropic:claude-sonnet-5-5"):
 
 # ---- as printed in the book: Running it --------------------------------------
 def run(agent, message: str, thread_id: str,
-        user_id: str = "u_1120"):
+        user_id: str = "u_1120",
+        refund_operation_id: str = "op-default"):
     config = {"configurable": {"thread_id": thread_id}}
     result = agent.invoke({"messages": [("user", message)]},
                           config=config,
-                          context=AppContext(user_id=user_id))
+                          context=AppContext(user_id=user_id,
+                                             refund_operation_id=refund_operation_id))
     return result, config
 
 
-def approve(agent, config, user_id: str = "u_1120"):
+def approve(agent, config, user_id: str = "u_1120",
+            refund_operation_id: str = "op-default"):
     return agent.invoke(
         Command(resume={"decisions": [{"type": "approve"}]}),
-        config=config, context=AppContext(user_id=user_id))
+        config=config,
+        context=AppContext(user_id=user_id,
+                           refund_operation_id=refund_operation_id))
 
 
 # ---- as printed in the book: The evals ---------------------------------------
@@ -235,12 +244,15 @@ def tools_called(messages):
 
 def run_evals(agent):
     for case in EVALS:
+        before_refunds = len(REFUNDS)
         result, _ = run(agent, case["msg"],
                         thread_id=f"eval-{case['id']}",
                         user_id=case.get("user", "u_1120"))
         called = tools_called(result["messages"])
         ok = (case["must_call"] <= called
               and not (case["must_not_call"] & called))
+        if case["id"] in {"bad-order", "not-my-order"}:
+            ok = ok and (len(REFUNDS) == before_refunds)
         print(case["id"],
               "PASS" if ok else f"FAIL {sorted(called)}")
 

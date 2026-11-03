@@ -165,14 +165,19 @@ def test_progress_events_fastapi_sse_stream():
 @pytest.mark.parametrize("query,expected_ok,expected_snippet", [
     ("SELECT * FROM invoices", True, "LIMIT 200"),
     ("SELECT * FROM invoices LIMIT 10", True, "LIMIT 10"),
+    ("SELECT * FROM invoices LIMIT 1000000", True, "LIMIT 200"),
     ("SELECT id FROM purchase_orders", True, "LIMIT 200"),
     ("SELECT * FROM goods_receipts", True, "LIMIT 200"),
+    ("SELECT count(*) FROM invoices", True, "LIMIT 200"),
     ("WITH inv AS (SELECT * FROM invoices) SELECT * FROM inv", True, "LIMIT 200"),
     ("DELETE FROM invoices WHERE id = 1", False, "SELECT only"),
     ("INSERT INTO invoices VALUES (1)", False, "SELECT only"),
     ("UPDATE invoices SET amount = 0", False, "SELECT only"),
     ("SELECT * FROM users", False, "table not allowed"),
     ("SELECT * FROM secrets", False, "table not allowed"),
+    ("SELECT * FROM other_schema.invoices", False, "schema qualification not allowed"),
+    ("SELECT pg_sleep(5) FROM invoices", False, "function not allowed"),
+    ("SELECT pg_read_file('x') FROM invoices", False, "function not allowed"),
     ("SELECT FROM WHERE", False, "unparseable"),
     ("SELECT 1; SELECT 2", False, "exactly one statement"),
 ])
@@ -187,10 +192,16 @@ def test_validate_query_sqlglot():
     from ch05.l5_9_4_validate_query import validate
     ok, q = validate("SELECT * FROM invoices")
     assert ok and "LIMIT 200" in q
+    ok, q = validate("SELECT * FROM invoices LIMIT 500")
+    assert ok and "LIMIT 200" in q
     ok, err = validate("DROP TABLE invoices")
     assert not ok and err == "SELECT only"
     ok, err = validate("SELECT * FROM users")
     assert not ok and "table not allowed" in err
+    ok, err = validate("SELECT * FROM public.invoices")
+    assert not ok and "schema qualification not allowed" in err
+    ok, err = validate("SELECT pg_sleep(1) FROM invoices")
+    assert not ok and "function not allowed" in err
     ok, err = validate("SELECT 1; SELECT 2")
     assert not ok and err == "exactly one statement"
 
@@ -214,15 +225,18 @@ def test_capstone_tools_enforce_limit_in_code():
 
 
 def test_capstone_evals_pass_offline():
-    from ch05.l5_11_1_capstone import EVALS, build_agent, run, tools_called
+    from ch05.l5_11_1_capstone import EVALS, REFUNDS, build_agent, run, tools_called
     from ch05.scripted import ScriptedSupportModel
     agent = build_agent(ScriptedSupportModel())
     for case in EVALS:
+        before_refunds = len(REFUNDS)
         result, _ = run(agent, case["msg"], thread_id=f"eval-{case['id']}",
                         user_id=case.get("user", "u_1120"))
         called = tools_called(result["messages"])
         assert case["must_call"] <= called, f"{case['id']} missing: {case['must_call'] - called}"
         assert not (case["must_not_call"] & called), f"{case['id']} forbidden: {case['must_not_call'] & called}"
+        if case["id"] in {"bad-order", "not-my-order"}:
+            assert len(REFUNDS) == before_refunds, f"{case['id']} mutated REFUNDS"
 
 
 # ---- Deliberately breaking the 7 capstone guardrails ----
@@ -262,11 +276,21 @@ def test_guardrail_5_exceeds_refundable_balance():
 def test_guardrail_6_idempotency_prevents_double_refund():
     from ch05.l5_11_1_capstone import REFUNDS, issue_refund
     REFUNDS.clear()
-    r1 = issue_refund.func("ORD-4821", Decimal("800"), _rt())
+    r1 = issue_refund.func("ORD-4821", Decimal("400"), _rt())
     assert r1["success"] and not r1["data"].get("replayed")
-    # Replay returns existing record marked replayed, no duplicate payout
-    r2 = issue_refund.func("ORD-4821", Decimal("800"), _rt())
+    # Replay with same operation ID returns existing record marked replayed, no duplicate payout
+    r2 = issue_refund.func("ORD-4821", Decimal("400"), _rt())
     assert r2["success"] and r2["data"]["replayed"] is True
+    # Distinct operation ID allows second genuine partial refund within balance (400 + 400 = 800)
+    rt2 = _rt()
+    rt2.context.refund_operation_id = "op-2"
+    r3 = issue_refund.func("ORD-4821", Decimal("400"), rt2)
+    assert r3["success"] and not r3["data"].get("replayed")
+    # A third refund exceeds balance (400 + 400 + 100 > 800)
+    rt3 = _rt()
+    rt3.context.refund_operation_id = "op-3"
+    r4 = issue_refund.func("ORD-4821", Decimal("100"), rt3)
+    assert r4["error_code"] == "EXCEEDS_BALANCE"
 
 
 def test_guardrail_7_human_approval_pause_and_rejection():
