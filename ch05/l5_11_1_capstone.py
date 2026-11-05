@@ -26,10 +26,9 @@ APPROVAL_LIMIT = Decimal("5000")
 
 @dataclass
 class AppContext:
-    """Identity supplied by the application after login.
-    The model never sets it."""
+    """Values supplied by the application, never by the model."""
     user_id: str
-    refund_operation_id: str = "op-default"
+    refund_operation_id: str = "op-default"  # one ID for each refund request
 
 
 ORDERS = {
@@ -76,12 +75,12 @@ def _refundable_balance(order_id):
     return ORDERS[order_id]["amount"] - refunded
 
 
-def _idempotency_key(order_id, amount, operation_id="op-default"):
-    # Derived in code
-    # so a model retry of the same call cannot pay twice.
-    # Includes operation_id so two genuine equal partial refunds do not collapse.
+def _idempotency_key(operation_id, order_id, amount):
+    # Derived in code so a model retry of the same call
+    # cannot pay twice. A new refund needs a new operation ID.
     return "refund-" + hashlib.sha256(
-        f"{operation_id}:{order_id}:{amount:.2f}".encode()).hexdigest()[:16]
+        f"{operation_id}:{order_id}:{amount:.2f}".encode()
+    ).hexdigest()[:16]
 
 
 def _public(record: dict) -> dict:
@@ -90,7 +89,7 @@ def _public(record: dict) -> dict:
     return {**record, "amount": f"{record['amount']:.2f}"}
 
 
-def _issue(order_id, amount, user_id, operation_id="op-default"):
+def _issue(order_id, amount, user_id, operation_id):
     """Shared checks and the write.
     Both refund tools go through here, so an
     amount edited at the approval step is checked again."""
@@ -102,7 +101,7 @@ def _issue(order_id, amount, user_id, operation_id="op-default"):
         return _error("INVALID_AMOUNT",
                       "Amount must be greater than zero.")
 
-    key = _idempotency_key(order_id, amount, operation_id)
+    key = _idempotency_key(operation_id, order_id, amount)
     if key in REFUNDS:
         # replay: return the original result, do not pay again
         return {"success": True,
@@ -155,8 +154,9 @@ def issue_refund(order_id: str, amount: Decimal,
         # the rule lives in code, not in the prompt
         return _error("NEEDS_APPROVAL",
                       "Amount exceeds the automatic limit.")
-    op_id = getattr(runtime.context, "refund_operation_id", "op-default")
-    return _issue(order_id, amount, runtime.context.user_id, op_id)
+    ctx = runtime.context
+    return _issue(order_id, amount, ctx.user_id,
+                  ctx.refund_operation_id)
 
 
 @tool
@@ -164,8 +164,9 @@ def issue_large_refund(order_id: str, amount: Decimal,
                        runtime: ToolRuntime[AppContext]) -> dict:
     """Issue a refund above ₹5,000.
     Runs only after a human approves."""
-    op_id = getattr(runtime.context, "refund_operation_id", "op-default")
-    return _issue(order_id, amount, runtime.context.user_id, op_id)
+    ctx = runtime.context
+    return _issue(order_id, amount, ctx.user_id,
+                  ctx.refund_operation_id)
 
 
 # ---- as printed in the book: The agent ---------------------------------------
@@ -193,23 +194,23 @@ def build_agent(model="anthropic:claude-sonnet-5-5"):
 
 # ---- as printed in the book: Running it --------------------------------------
 def run(agent, message: str, thread_id: str,
-        user_id: str = "u_1120",
-        refund_operation_id: str = "op-default"):
+        user_id: str = "u_1120"):
     config = {"configurable": {"thread_id": thread_id}}
     result = agent.invoke({"messages": [("user", message)]},
                           config=config,
-                          context=AppContext(user_id=user_id,
-                                             refund_operation_id=refund_operation_id))
+                          context=AppContext(
+                              user_id=user_id,
+                              refund_operation_id=thread_id))
     return result, config
 
 
-def approve(agent, config, user_id: str = "u_1120",
-            refund_operation_id: str = "op-default"):
+def approve(agent, config, user_id: str = "u_1120"):
+    thread_id = config["configurable"]["thread_id"]
     return agent.invoke(
         Command(resume={"decisions": [{"type": "approve"}]}),
         config=config,
         context=AppContext(user_id=user_id,
-                           refund_operation_id=refund_operation_id))
+                           refund_operation_id=thread_id))
 
 
 # ---- as printed in the book: The evals ---------------------------------------
@@ -228,12 +229,14 @@ EVALS = [
 
     {"id": "bad-order", "msg": "Refund ORD-0009, it broke.",
      "must_call": {"lookup_order"},
-     "must_not_call": {"issue_refund", "issue_large_refund"}},
+     "must_not_call": {"issue_refund", "issue_large_refund"},
+     "no_refund": True},
 
     {"id": "not-my-order", "user": "u_9999",
      "msg": "ORD-4821 arrived damaged. Refund please.",
      "must_call": {"lookup_order"},
-     "must_not_call": {"issue_refund", "issue_large_refund"}},
+     "must_not_call": {"issue_refund", "issue_large_refund"},
+     "no_refund": True},
 ]
 
 
@@ -244,15 +247,15 @@ def tools_called(messages):
 
 def run_evals(agent):
     for case in EVALS:
-        before_refunds = len(REFUNDS)
+        refunds_before = len(REFUNDS)
         result, _ = run(agent, case["msg"],
                         thread_id=f"eval-{case['id']}",
                         user_id=case.get("user", "u_1120"))
         called = tools_called(result["messages"])
         ok = (case["must_call"] <= called
               and not (case["must_not_call"] & called))
-        if case["id"] in {"bad-order", "not-my-order"}:
-            ok = ok and (len(REFUNDS) == before_refunds)
+        if case.get("no_refund"):
+            ok = ok and len(REFUNDS) == refunds_before
         print(case["id"],
               "PASS" if ok else f"FAIL {sorted(called)}")
 

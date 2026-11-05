@@ -175,7 +175,7 @@ def test_progress_events_fastapi_sse_stream():
     ("UPDATE invoices SET amount = 0", False, "SELECT only"),
     ("SELECT * FROM users", False, "table not allowed"),
     ("SELECT * FROM secrets", False, "table not allowed"),
-    ("SELECT * FROM other_schema.invoices", False, "schema qualification not allowed"),
+    ("SELECT * FROM other_schema.invoices", False, "schema names not allowed"),
     ("SELECT pg_sleep(5) FROM invoices", False, "function not allowed"),
     ("SELECT pg_read_file('x') FROM invoices", False, "function not allowed"),
     ("SELECT FROM WHERE", False, "unparseable"),
@@ -199,7 +199,7 @@ def test_validate_query_sqlglot():
     ok, err = validate("SELECT * FROM users")
     assert not ok and "table not allowed" in err
     ok, err = validate("SELECT * FROM public.invoices")
-    assert not ok and "schema qualification not allowed" in err
+    assert not ok and "schema names not allowed" in err
     ok, err = validate("SELECT pg_sleep(1) FROM invoices")
     assert not ok and "function not allowed" in err
     ok, err = validate("SELECT 1; SELECT 2")
