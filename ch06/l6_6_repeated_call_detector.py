@@ -1,7 +1,6 @@
 """Listing 6.6 - A repeated-call detector for the agent in Section 5.11.1.
 
 Stops a run that keeps making the same tool call with the same arguments.
-The print runs two lines together ("import jsonfrom collections ..."); they are separate lines here.
 """
 # Repeated-call detector for the agent in Section 5.11.1.
 

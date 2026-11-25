@@ -10,6 +10,13 @@ pytest -q                                              # 110 tests (6 live-only 
 python -m ch05.l5_11_1_capstone                        # the complete agent + evals, offline
 ```
 
+## License
+
+The code in this repository is released under the [MIT License](LICENSE), so you may use, copy, modify
+and distribute it, including in your own projects. The license covers the code only. The text, figures and
+other content of the book *A Curious Guide to AI Agents* are not part of this repository and are not
+licensed under the MIT License; all rights in the book remain with its author and publisher.
+
 ## Offline by default
 
 Agent listings need a model. To keep the tests fast, free, and deterministic, they run against
