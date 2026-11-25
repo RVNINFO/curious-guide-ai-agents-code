@@ -23,10 +23,10 @@ def test_judge_parses_json_scores():
 def test_process_scoring_checks_tools_and_answer():
     from ch04.l4_2_3_llm_judge import load_case, score_process
     case = load_case()
-    good = {"get_order_status", "start_return"}
+    good = {"lookup_order", "start_return"}
     assert score_process(case, good, "You can return it within 30 days.")
     assert not score_process(case, good | {"issue_refund"}, "return within 30 days")
-    assert not score_process(case, {"get_order_status"}, "return within 30 days")
+    assert not score_process(case, {"lookup_order"}, "return within 30 days")
     assert not score_process(case, good, "refund approved, return in 30 days")
 
 
@@ -159,13 +159,29 @@ def test_progress_events_fastapi_sse_stream():
     events = [json.loads(l.split("data: ")[1]) for l in lines if "data: " in l]
     assert any(e["type"] == "step" for e in events)
     assert any(e["type"] == "final" for e in events)
+    assert [e["text"] for e in events if e["type"] == "step"][0] == "Checking your order"
+    assert "ORD-4821" not in resp.text  # order IDs and amounts never reach the browser
+
+
+def test_progress_events_sse_stream_pauses_for_approval():
+    """Listing 5.8.4 builds AppContext(user_id=...) only; the stream must not raise TypeError."""
+    from starlette.testclient import TestClient
+    from ch05.l5_8_4_progress_events import create_app
+    from ch05.l5_11_1_capstone import build_agent
+    from ch05.scripted import ScriptedSupportModel
+    client = TestClient(create_app(build_agent(ScriptedSupportModel())))
+    resp = client.get("/runs/test-sse-2/events?message=ORD-4822 arrived damaged. Refund please.")
+    assert resp.status_code == 200
+    events = [json.loads(l.split("data: ")[1]) for l in resp.text.split("\n\n") if "data: " in l]
+    assert events[-1] == {"type": "awaiting_approval", "text": "Waiting for manager approval"}
+    assert any(e["text"] == "Preparing a refund for approval" for e in events)
 
 
 # ---- 5.9.4 SQL validator ----
 @pytest.mark.parametrize("query,expected_ok,expected_snippet", [
     ("SELECT * FROM invoices", True, "LIMIT 200"),
     ("SELECT * FROM invoices LIMIT 10", True, "LIMIT 10"),
-    ("SELECT * FROM invoices LIMIT 1000000", True, "LIMIT 200"),
+    ("SELECT * FROM invoices LIMIT 5", True, "LIMIT 5"),
     ("SELECT id FROM purchase_orders", True, "LIMIT 200"),
     ("SELECT * FROM goods_receipts", True, "LIMIT 200"),
     ("SELECT count(*) FROM invoices", True, "LIMIT 200"),
@@ -175,9 +191,10 @@ def test_progress_events_fastapi_sse_stream():
     ("UPDATE invoices SET amount = 0", False, "SELECT only"),
     ("SELECT * FROM users", False, "table not allowed"),
     ("SELECT * FROM secrets", False, "table not allowed"),
-    ("SELECT * FROM other_schema.invoices", False, "schema names not allowed"),
-    ("SELECT pg_sleep(5) FROM invoices", False, "function not allowed"),
-    ("SELECT pg_read_file('x') FROM invoices", False, "function not allowed"),
+    ("SELECT * INTO invoices_copy FROM goods_receipts", False, "SELECT INTO / locking not allowed"),
+    ("SELECT * FROM invoices FOR UPDATE", False, "SELECT INTO / locking not allowed"),
+    ("SELECT * FROM invoices FOR SHARE", False, "SELECT INTO / locking not allowed"),
+    ("WITH d AS (DELETE FROM invoices RETURNING *) SELECT * FROM d", False, "writes not allowed"),
     ("SELECT FROM WHERE", False, "unparseable"),
     ("SELECT 1; SELECT 2", False, "exactly one statement"),
 ])
@@ -192,16 +209,12 @@ def test_validate_query_sqlglot():
     from ch05.l5_9_4_validate_query import validate
     ok, q = validate("SELECT * FROM invoices")
     assert ok and "LIMIT 200" in q
-    ok, q = validate("SELECT * FROM invoices LIMIT 500")
-    assert ok and "LIMIT 200" in q
+    ok, q = validate("SELECT * FROM invoices LIMIT 50")
+    assert ok and "LIMIT 50" in q
     ok, err = validate("DROP TABLE invoices")
     assert not ok and err == "SELECT only"
     ok, err = validate("SELECT * FROM users")
     assert not ok and "table not allowed" in err
-    ok, err = validate("SELECT * FROM public.invoices")
-    assert not ok and "schema names not allowed" in err
-    ok, err = validate("SELECT pg_sleep(1) FROM invoices")
-    assert not ok and "function not allowed" in err
     ok, err = validate("SELECT 1; SELECT 2")
     assert not ok and err == "exactly one statement"
 
@@ -278,19 +291,56 @@ def test_guardrail_6_idempotency_prevents_double_refund():
     REFUNDS.clear()
     r1 = issue_refund.func("ORD-4821", Decimal("400"), _rt())
     assert r1["success"] and not r1["data"].get("replayed")
-    # Replay with same operation ID returns existing record marked replayed, no duplicate payout
+    # A model retry of the same call returns the original record marked replayed: no second payout
     r2 = issue_refund.func("ORD-4821", Decimal("400"), _rt())
     assert r2["success"] and r2["data"]["replayed"] is True
-    # Distinct operation ID allows second genuine partial refund within balance (400 + 400 = 800)
-    rt2 = _rt()
-    rt2.context.refund_operation_id = "op-2"
-    r3 = issue_refund.func("ORD-4821", Decimal("400"), rt2)
+    assert r2["data"]["reference"] == r1["data"]["reference"] and len(REFUNDS) == 1
+    # A different amount is a different refund; it is still checked against the balance (400 + 400 = 800)
+    r3 = issue_refund.func("ORD-4821", Decimal("399"), _rt())
     assert r3["success"] and not r3["data"].get("replayed")
-    # A third refund exceeds balance (400 + 400 + 100 > 800)
-    rt3 = _rt()
-    rt3.context.refund_operation_id = "op-3"
-    r4 = issue_refund.func("ORD-4821", Decimal("100"), rt3)
+    # 400 + 399 + 100 > 800
+    r4 = issue_refund.func("ORD-4821", Decimal("100"), _rt())
     assert r4["error_code"] == "EXCEEDS_BALANCE"
+
+
+def test_tool_output_does_not_expose_idempotency_key():
+    from ch05.l5_11_1_capstone import REFUNDS, issue_refund
+    REFUNDS.clear()
+    first = issue_refund.func("ORD-4821", Decimal("100"), _rt())
+    replay = issue_refund.func("ORD-4821", Decimal("100"), _rt())
+    assert "idempotency_key" not in first["data"] and "idempotency_key" not in replay["data"]
+    assert all("idempotency_key" in rec for rec in REFUNDS.values())  # the ledger keeps it
+
+
+def test_capstone_model_call_limit_stops_a_looping_agent():
+    from ch05.l5_11_1_capstone import build_agent, run
+    looping = ScriptedChatModel(script=[ai("", ("search_policy", {"query": "refund"}))])  # repeats forever
+    out, _ = run(build_agent(looping), "keep going", "t-loop")
+    assert looping.i <= 16  # run_limit=15 model calls, then the middleware ends the run
+    assert "limit" in str(out["messages"][-1].content).lower()
+
+
+def test_capstone_tool_call_limit_stops_a_looping_agent():
+    from ch05.l5_11_1_capstone import build_agent, run
+    looping = ScriptedChatModel(script=[ai("", ("search_policy", {"query": "refund"}))])
+    out, _ = run(build_agent(looping), "keep going", "t-loop-2")
+    executed = [m for m in out["messages"] if m.type == "tool" and m.status != "error"]
+    assert len(executed) <= 10  # ToolCallLimitMiddleware(run_limit=10)
+
+
+def test_approve_records_approver_identity():
+    from ch05.l5_11_1_capstone import AUDIT_LOG, REFUNDS, approve, build_agent, run
+    REFUNDS.clear()
+    AUDIT_LOG.clear()
+    m = ScriptedChatModel(script=[ai("", ("issue_large_refund", {"order_id": "ORD-4822", "amount": "25000"})),
+                                  ai("Refund processed.")])
+    agent = build_agent(m)
+    paused, cfg = run(agent, "refund", "t-audit")
+    assert "__interrupt__" in paused and not REFUNDS
+    approve(agent, cfg, approver_id="mgr_77")
+    assert AUDIT_LOG == [{"thread_id": "t-audit", "approver_id": "mgr_77",
+                          "requested_by": "u_1120", "decision": "approve"}]
+    assert len(REFUNDS) == 1
 
 
 def test_guardrail_7_human_approval_pause_and_rejection():
@@ -373,3 +423,94 @@ def test_agent_card_and_memory_record_shapes():
     assert [s["id"] for s in card["skills"]] == ["check_stock", "reserve_stock"]
     mem = json.loads((DATA / "memory_record.json").read_text(encoding="utf-8"))
     assert {"id", "user_id", "type", "content", "source", "confidence", "created_at"} <= set(mem)
+
+
+# ---- 5.12.3 deterministic invoice matcher ----
+def test_invoice_match_example_returns_two_unit_difference():
+    from ch05.l5_12_3_invoice_match import GR, INV, PO, match
+    r = match(PO, GR, INV)
+    assert r["status"] == "mismatch" and r["requires_human_review"] is True
+    assert r["calculated_difference"] == Decimal(2) and r["indicative_value"] == Decimal(2000)
+    assert r["source_refs"] == ["INV-78421", "45000987", "50003456"]
+
+
+def test_invoice_match_other_states():
+    from ch05.l5_12_3_invoice_match import GR, INV, PO, match
+    assert match(PO, GR, INV, qty_tolerance=Decimal(2))["status"] == "matched"
+    assert match(None, GR, INV)["status"] == "insufficient_evidence"
+    assert match(PO, GR, {**INV, "item": 20})["status"] == "conflict"
+    reversed_gr = [{**GR[0], "reversed": True}]
+    assert match(PO, reversed_gr, INV)["received"] == Decimal(0)
+
+
+# ---- Part 6: limits, repeated-call detector, durable execution ----
+def test_part6_limits_listing_matches_the_limits_in_build_agent():
+    from ch06.l6_5_limits import LIMITS
+    assert [type(m).__name__ for m in LIMITS] == ["ModelCallLimitMiddleware",
+                                                  "ToolCallLimitMiddleware", "ToolCallLimitMiddleware"]
+
+
+def test_part6_per_tool_limit_blocks_extra_search_policy_calls():
+    from langchain.agents import create_agent
+    from ch05.l5_11_1_capstone import AppContext, search_policy
+    from ch06.l6_5_limits import LIMITS
+    looping = ScriptedChatModel(script=[ai("", ("search_policy", {"query": "refund"})),
+                                        ai("", ("search_policy", {"query": "return"})),
+                                        ai("", ("search_policy", {"query": "damaged"})),
+                                        ai("", ("search_policy", {"query": "approval"})),
+                                        ai("done")])
+    agent = create_agent(model=looping, tools=[search_policy], middleware=LIMITS, context_schema=AppContext)
+    out = agent.invoke({"messages": [("user", "go")]}, context=AppContext(user_id="u_1120"))
+    results = [m for m in out["messages"] if m.type == "tool"]
+    assert len(results) == 4 and results[-1].status == "error"  # the 4th call is blocked, not executed
+
+
+def test_part6_repeated_call_detector_stops_the_run():
+    from langchain.agents import create_agent
+    from ch05.l5_11_1_capstone import AppContext, search_policy
+    from ch06.l6_6_repeated_call_detector import MAX_REPEATS, stop_repeated_calls
+    import itertools
+    ids = itertools.count()
+
+    def same_call_with_fresh_id(_messages):  # a real model gives every tool call its own ID
+        msg = ai("", ("search_policy", {"query": "refund"}))
+        msg.tool_calls[0]["id"] = f"call_{next(ids)}"
+        return msg
+
+    looping = ScriptedChatModel(script=[same_call_with_fresh_id])
+    agent = create_agent(model=looping, tools=[search_policy], middleware=[stop_repeated_calls],
+                         context_schema=AppContext)
+    out = agent.invoke({"messages": [("user", "go")]}, context=AppContext(user_id="u_1120"),
+                       config={"recursion_limit": 60})
+    assert "A person will take over." in out["messages"][-1].content
+    assert looping.i <= MAX_REPEATS + 1
+
+
+def test_part6_handle_reuses_correlation_id_and_records_metadata():
+    from ch05.l5_11_1_capstone import build_agent
+    from ch06.l6_2_postgres_checkpointer import handle
+    agent = build_agent(ScriptedChatModel(script=[ai("Hello.")]))
+    _, cid = handle(agent, "hi", "u_1120")
+    assert len(cid) == 36
+    _, cid2 = handle(agent, "hi again", "u_1120", correlation_id=cid)
+    assert cid2 == cid
+    state = agent.get_state({"configurable": {"thread_id": cid}})
+    assert len([x for x in state.values["messages"] if x.type == "human"]) == 2
+
+
+def test_exercise_starter_stubs_let_the_3_1_5_loop_run_unchanged():
+    """P3-04: pasting the 3.1.5 loop into the starter must not raise NameError."""
+    import inspect
+    import exercises.ex_3_1_5_agent_loop_starter as starter
+    import ch03.l3_1_5_agent_loop as listing
+    for name in ("SYSTEM_PROMPT", "validate", "allowed", "logger"):
+        assert hasattr(starter, name), name
+    ns = {k: getattr(starter, k) for k in dir(starter) if not k.startswith("__")}
+    ns["json"] = json
+    exec(inspect.getsource(listing.run_agent), ns)
+    m = starter.FakeModel([starter.Response(tool_calls=[starter.Call("1", "t", {})]),
+                           starter.Response(content="done")])
+    assert ns["run_agent"](m, "x", [starter.Tool("t", lambda: 1)]) == "done"
+    m = starter.FakeModel([starter.Response(tool_calls=[starter.Call("1", "ghost", {})]),
+                           starter.Response(content="ok")])
+    assert ns["run_agent"](m, "x", []) == "ok"

@@ -3,13 +3,13 @@
 The `db` client is the in-memory stand-in from common/fake_db.py.
 Run:  python -m ch03.l3_2_3_order_status_tool
 """
-from langchain_core.tools import tool
+from langchain.tools import tool
 
 from common.fake_db import db
 
 
 @tool
-def get_order_status(order_id: str) -> dict:
+def lookup_order(order_id: str) -> dict:
     """Look up the current status of a single order by its ID.
 
     Use this when the customer refers to a specific order and you
@@ -33,5 +33,5 @@ def get_order_status(order_id: str) -> dict:
 
 
 if __name__ == "__main__":
-    print(get_order_status.invoke({"order_id": "ORD-1234"}))
-    print(get_order_status.invoke({"order_id": "ORD-0000"}))
+    print(lookup_order.invoke({"order_id": "ORD-1234"}))
+    print(lookup_order.invoke({"order_id": "ORD-0000"}))

@@ -22,7 +22,7 @@ This repository verifies all code listings against the pins published in *A Curi
   * Tested against `a2a-samples` "helloworld" server (`a2a-sdk` 1.1.0, protocol 1.0).
   * Wire format uses `A2A-Version: 1.0` header, JSON-RPC 2.0 bindings, `supportedInterfaces`, and standard task states (`TASK_STATE_SUBMITTED`, `TASK_STATE_WORKING`, `TASK_STATE_INPUT_REQUIRED`, `TASK_STATE_AUTH_REQUIRED`, `TASK_STATE_COMPLETED`).
 * **MCP (Model Context Protocol)**:
-  * Tested with FastMCP 4.1.4 (Listing 3.11.1).
+  * Tested with FastMCP 4.1.4 (Listings 3.11.1 - 3.11.3: tool, resource, prompt).
 
 ## Live Model Strings
 * `anthropic:claude-sonnet-5-5`

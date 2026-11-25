@@ -1,5 +1,5 @@
 """Reference solution for the Part 5 exercise (refund window enforced in the tool)."""
-from langchain_core.tools import tool
+from langchain.tools import tool
 
 from exercises.ex_5_refund_window_starter import APPROVAL_LIMIT, ORDERS
 

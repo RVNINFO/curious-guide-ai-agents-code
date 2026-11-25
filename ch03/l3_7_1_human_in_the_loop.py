@@ -6,8 +6,9 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langgraph.checkpoint.memory import InMemorySaver
 
-from ch03.l3_2_3_order_status_tool import get_order_status
-from langchain_core.tools import tool
+from langchain.tools import tool
+
+from ch03.l3_2_3_order_status_tool import lookup_order
 
 EXECUTED: list[tuple] = []  # records side effects so tests can prove what ran
 
@@ -29,7 +30,7 @@ def send_email(to: str, body: str) -> dict:
 def build_agent(model="anthropic:claude-sonnet-5-5"):
     return create_agent(
         model=model,
-        tools=[get_order_status, issue_refund, send_email],
+        tools=[lookup_order, issue_refund, send_email],
         middleware=[
             HumanInTheLoopMiddleware(
                 interrupt_on={

@@ -15,6 +15,7 @@ Run against a server:  python -m ch03.l3_12_3_a2a_client http://127.0.0.1:9999 [
 """
 import sys
 import time
+import uuid
 
 import httpx
 
@@ -35,7 +36,7 @@ class TaskPaused(RuntimeError):
         self.question = " ".join(
             p.get("text", "") for p in parts).strip()
         super().__init__(
-            f"Task {task['id']} is waiting: {state}."
+            f"Task {task['id']} is waiting: {state}. "
             f"{self.question}")
 
 
@@ -54,12 +55,14 @@ def _rpc(
     method: str,
     params: dict,
 ) -> dict:
-    res = client.post(
+    response = client.post(
         url,
         headers=_headers(token),
         json={"jsonrpc": "2.0", "id": req_id,
               "method": method, "params": params},
-    ).json()
+    )
+    response.raise_for_status()
+    res = response.json()
     if "error" in res:
         raise RuntimeError(
             f"A2A error from {method}: {res['error']}")
@@ -100,7 +103,7 @@ def ask_agent(
         "message": {
             "role": "ROLE_USER",
             "parts": [{"text": text}],
-            "messageId": "msg-1",
+            "messageId": str(uuid.uuid4()),
         }
     }
     # don't wait for completion: forces the polling path below

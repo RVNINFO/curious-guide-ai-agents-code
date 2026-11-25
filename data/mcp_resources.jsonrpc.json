@@ -1,0 +1,46 @@
+{
+  "list": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "resources/list"
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "resources": [
+          {
+            "uri": "translation://languages",
+            "name": "supported_languages",
+            "description": "Languages the service can translate into.",
+            "mimeType": "text/plain"
+          }
+        ]
+      }
+    }
+  },
+  "read": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "resources/read",
+      "params": {
+        "uri": "translation://languages"
+      }
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "contents": [
+          {
+            "uri": "translation://languages",
+            "mimeType": "text/plain",
+            "text": "Japanese, French, Spanish"
+          }
+        ]
+      }
+    }
+  }
+}

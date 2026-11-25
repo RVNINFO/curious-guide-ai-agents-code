@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Literal, Optional
 
-from langchain_core.tools import tool
+from langchain.tools import tool
 from pydantic import BaseModel, Field
 
 from common.fake_db import db
@@ -34,7 +34,7 @@ def search_orders(email: str, status=None, limit=10) -> list[dict]:
 
     Returns up to 20 recent orders, newest first. Use this when the
     customer has not given a specific order ID. If you already have
-    an order ID, use get_order_status instead.
+    an order ID, use lookup_order instead.
     """
     query = {"email": email}
     if status:

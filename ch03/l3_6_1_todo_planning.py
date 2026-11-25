@@ -5,7 +5,7 @@ Live:  ANTHROPIC_API_KEY=... python -m ch03.l3_6_1_todo_planning
 """
 from langchain.agents import create_agent
 from langchain.agents.middleware import TodoListMiddleware
-from langchain_core.tools import tool
+from langchain.tools import tool
 
 
 @tool

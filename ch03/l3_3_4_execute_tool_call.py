@@ -1,7 +1,9 @@
 """Listing 3.3.4 - The tool-execution pipeline (7 checks between request and result).
 
+Order: exists -> valid -> permission -> rate limit -> approval -> run (with retry) -> trim.
+
 The book prints this as pseudocode. The helpers it assumes (REGISTRY, error, RATE_LIMITER,
-run_with_timeout, request_approval, truncate_for_context, log) are implemented minimally here.
+run_with_retry, run_with_timeout, request_approval, truncate_for_context, log) are implemented minimally here.
 Run:  python -m ch03.l3_3_4_execute_tool_call
 """
 import logging
@@ -13,8 +15,6 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
-
-log = logging.getLogger("tools")
 
 
 # --- helpers the book assumes ---------------------------------------------
@@ -81,14 +81,44 @@ def run_with_timeout(fn, args: BaseModel, seconds: float):
             raise TimeoutError from exc
 
 
+BACKOFF_SECONDS = 0.5  # base delay; doubles after each failed attempt
+
+
+def run_with_retry(fn, args: BaseModel, seconds: float, attempts: int = 3):
+    """Retry transient failures in code, with exponential backoff (Section 3.3.5).
+    A timeout is not retried. After the last attempt the exception propagates."""
+    for attempt in range(attempts):
+        try:
+            return run_with_timeout(fn, args, seconds)
+        except TimeoutError:
+            raise
+        except Exception:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(BACKOFF_SECONDS * 2 ** attempt)
+
+
+class _StructuredLog:
+    """The book's `log.exception("event", key=value)` call style, on top of stdlib logging."""
+
+    def __init__(self, name: str):
+        self._log = logging.getLogger(name)
+
+    def exception(self, event: str, **fields) -> None:
+        self._log.exception("%s %s", event, fields)
+
+
 def truncate_for_context(result: Any, max_tokens: int = 2000) -> Any:
     text = str(result)
     limit = max_tokens * 4  # rough chars-per-token estimate
     return text if len(text) <= limit else text[:limit] + " ...[truncated]"
 
 
+log = _StructuredLog("tools")
+
+
 # --- the listing -----------------------------------------------------------
-def execute_tool_call(call, context, timeout_seconds: float = 30):
+def execute_tool_call(call, context):
     # 1. Does this tool exist?
     tool = REGISTRY.get(call.name)
     if tool is None:
@@ -104,22 +134,22 @@ def execute_tool_call(call, context, timeout_seconds: float = 30):
     if not context.user.can(tool.permission):
         return error("You do not have permission for this action.")
 
-    # 4. Does it need approval?
-    if tool.requires_approval:
-        return request_approval(call, context)
-
-    # 5. Rate limit
+    # 4. Rate limit
     if not RATE_LIMITER.allow(context.user.id, tool.name):
         return error("Rate limit reached. Try again shortly.")
 
-    # 6. Run it, with a timeout
+    # 5. Does it need approval?
+    if tool.requires_approval:
+        return request_approval(call, context)
+
+    # 6. Run it, with a timeout and backoff on transient errors
     try:
-        result = run_with_timeout(tool.fn, args, seconds=timeout_seconds)
+        result = run_with_retry(tool.fn, args, seconds=30, attempts=3)
     except TimeoutError:
         return error("The operation timed out.")
-    except Exception:
-        log.exception("tool_failed: %s", call.name)
-        return error("ERR_INTERNAL_FAILURE", retryable=True)
+    except Exception as exc:
+        log.exception("tool_failed", tool=call.name)
+        return error("The tool failed after retries.", retryable=False)
 
     # 7. Trim before it enters the context
     return truncate_for_context(result, max_tokens=2000)

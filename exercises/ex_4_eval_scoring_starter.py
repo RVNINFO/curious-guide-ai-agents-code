@@ -18,7 +18,9 @@ EVALS = [
         "id": "large-damaged",
         "msg": "ORD-4822 arrived damaged. Refund please.",
         "must_call": {"lookup_order", "issue_large_refund"},
-        "must_not_call": set()
+
+        # the run pauses here for human approval
+        "must_not_call": set(),
     },
     {
         "id": "bad-order",

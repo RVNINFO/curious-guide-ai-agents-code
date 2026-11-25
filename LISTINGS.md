@@ -6,7 +6,7 @@ Book section → file → test. "Offline" means it runs with no API key (scripte
 | Book § | Listing | File | Test | Mode |
 |---|---|---|---|---|
 | 3.1.5 | Agent loop (framework-free) | `ch03/l3_1_5_agent_loop.py` | `test_agent_loop_*` | Offline |
-| 3.2.3 | `get_order_status` tool | `ch03/l3_2_3_order_status_tool.py` | `test_get_order_status` | Offline |
+| 3.2.3 | `lookup_order` tool | `ch03/l3_2_3_order_status_tool.py` | `test_lookup_order` | Offline |
 | 3.3.1 | Tool schema (JSON + Pydantic) | `ch03/l3_3_1_tool_schema.py`, `data/search_orders.tool.json` | `test_search_orders_schema_*` | Offline |
 | 3.3.2 | Structured output / `TicketTriage` | `ch03/l3_3_2_structured_output.py` | `test_triage_*` | Offline + Live |
 | 3.3.4 | Tool-execution pipeline | `ch03/l3_3_4_execute_tool_call.py` | `test_pipeline_*` | Offline |
@@ -19,7 +19,7 @@ Book section → file → test. "Offline" means it runs with no API key (scripte
 | 3.8.1 | Router pattern | `ch03/l3_8_1_router.py` | `test_router_*` | Offline |
 | 3.8.3 | Reflection pattern | `ch03/l3_8_3_reflection.py` | `test_reflection_*` | Offline |
 | 3.8.5 | Reviewer pattern | `ch03/l3_8_5_reviewer.py` | `test_reviewer_paths` | Offline |
-| 3.11.1 | MCP server (FastMCP) | `ch03/l3_11_1_mcp_server.py`, `data/mcp_tools_*.jsonrpc.json` | `test_mcp_server_*` | Offline (in-memory client) |
+| 3.11.1 - 3.11.3 | MCP server: tool, resource, prompt (FastMCP) | `ch03/l3_11_1_mcp_server.py`, `data/mcp_*.jsonrpc.json` | `test_mcp_server_*` | Offline (in-memory client) |
 | 3.12.2 | Agent Card JSON | `data/agent_card.json` | `test_agent_card_*` | Data |
 | 3.12.3 | A2A client | `ch03/l3_12_3_a2a_client.py` | `test_a2a_client_*` | Offline (mock transport) |
 | 3.4.3 | Memory record schema | `data/memory_record.json` | `test_agent_card_and_memory_record_shapes` | Data |
@@ -29,9 +29,13 @@ Book section → file → test. "Offline" means it runs with no API key (scripte
 | 5.x | Tenant-scoped refund tool | `ch05/l5_tenant_scoped_refund.py`, `ch05/adapters.py` | `test_refund_rules`, `test_same_tenant_*` | Offline + Live |
 | 5.x | Typed tool results | `ch05/l5_tool_result_types.py` | `test_tool_result_types_*` | Offline |
 | 5.3 | Step-3 tool result JSON | `data/tool_result_lookup_order.json` | `test_data_files_are_valid_json` | Data |
-| 5.8.4 | Progress events (FastAPI SSE) | `ch05/l5_8_4_progress_events.py` | `test_progress_events_*` | Offline |
+| 5.8.4 | Progress events (FastAPI SSE) | `ch05/l5_8_4_progress_events.py` | `test_progress_events_*` (incl. the SSE stream) | Offline |
 | 5.9.4 | SQL validator (sqlglot) | `ch05/l5_9_4_validate_query.py` | `test_validate_query_*` | Offline |
-| 5.11.1 | Complete agent (tools, approval, evals) | `ch05/l5_11_1_capstone.py`, `ch05/scripted.py` | `test_capstone_*` | Offline + Live (`--live`) |
+| 5.11.1 | Complete agent (tools, call limits, approval + approver audit, evals) | `ch05/l5_11_1_capstone.py`, `ch05/scripted.py` | `test_capstone_*`, `test_guardrail_*`, `test_approve_*` | Offline + Live (`--live`) |
+| 5.12.3 | Deterministic three-way invoice matcher | `ch05/l5_12_3_invoice_match.py` | `test_invoice_match_*` | Offline |
+| 6.2 | Durable execution: PostgresSaver + correlation ID | `ch06/l6_2_postgres_checkpointer.py` | `test_part6_handle_*` | Offline (`handle`); Live (Postgres) |
+| 6.5 | Hard limits (model / tool / per-tool) | `ch06/l6_5_limits.py` | `test_part6_*limit*` | Offline |
+| 6.6 | Repeated-call detector | `ch06/l6_6_repeated_call_detector.py` | `test_part6_repeated_call_detector_*` | Offline |
 | Ex. 3 | Agent-loop starter / solution | `exercises/ex_3_1_5_*`, `solutions/ex_3_1_5_*` | `test_exercise_agent_loop_*` | Offline |
 | Ex. 4.2 | Eval scoring starter / solution | `exercises/ex_4_*`, `solutions/ex_4_*` | `test_exercise_score_case_*` | Offline |
 | Ex. 5.x | Refund-window starter / solution | `exercises/ex_5_*`, `solutions/ex_5_*` | `test_exercise_refund_window_*` | Offline |

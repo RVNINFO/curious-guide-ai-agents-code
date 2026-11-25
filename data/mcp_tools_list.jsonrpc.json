@@ -1,10 +1,53 @@
 {
-  "request": {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
-  "response": {"jsonrpc": "2.0", "id": 1, "result": {"tools": [{
-    "name": "translate_text",
-    "description": "Translate text into the target language, for example 'Japanese'.",
-    "inputSchema": {"type": "object",
-      "properties": {"text": {"type": "string"},
-                     "target_language": {"type": "string"}},
-      "required": ["text", "target_language"]}}]}}
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list"
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "tools": [
+        {
+          "name": "translate_text",
+          "title": "Translate Text",
+          "description": "Translate text into the target language,\nfor example 'Japanese'.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "target_language": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "target_language"
+            ],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "x-fastmcp-wrap-result": true
+          },
+          "_meta": {
+            "fastmcp": {
+              "tags": []
+            }
+          }
+        }
+      ]
+    }
+  }
 }

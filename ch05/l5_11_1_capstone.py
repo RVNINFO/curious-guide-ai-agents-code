@@ -4,9 +4,8 @@ Offline demo (no key):  python -m ch05.l5_11_1_capstone
 Live (real model):      ANTHROPIC_API_KEY=... python -m ch05.l5_11_1_capstone --live
 Tracing (optional):     set LANGSMITH_TRACING=true and LANGSMITH_API_KEY.
 
-The code between the "---- as printed in the book" markers follows the printed listing. Two printed lines
-were not valid Python and are fixed here (marked FIX): a stray pair of backticks inside the system prompt,
-and `or POLICY` on its own line in search_policy.
+The code between the "---- as printed in the book" markers follows the printed listing. The print
+typesets `run()` and `approve()` with uneven indentation (3 spaces); here they use standard 4-space indents.
 """
 import hashlib
 import sys
@@ -14,7 +13,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import HumanInTheLoopMiddleware
+from langchain.agents.middleware import (
+    HumanInTheLoopMiddleware,
+    ModelCallLimitMiddleware,
+    ToolCallLimitMiddleware,
+)
 from langchain.tools import tool, ToolRuntime
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
@@ -26,9 +29,9 @@ APPROVAL_LIMIT = Decimal("5000")
 
 @dataclass
 class AppContext:
-    """Values supplied by the application, never by the model."""
+    """Identity supplied by the application after login.
+    The model never sets it."""
     user_id: str
-    refund_operation_id: str = "op-default"  # one ID for each refund request
 
 
 ORDERS = {
@@ -75,21 +78,23 @@ def _refundable_balance(order_id):
     return ORDERS[order_id]["amount"] - refunded
 
 
-def _idempotency_key(operation_id, order_id, amount):
-    # Derived in code so a model retry of the same call
-    # cannot pay twice. A new refund needs a new operation ID.
+def _idempotency_key(order_id, amount):
+    # Derived in code
+    # so a model retry of the same call cannot pay twice.
     return "refund-" + hashlib.sha256(
-        f"{operation_id}:{order_id}:{amount:.2f}".encode()
-    ).hexdigest()[:16]
+        f"{order_id}:{amount:.2f}".encode()).hexdigest()[:16]
 
 
 def _public(record: dict) -> dict:
     """JSON-safe copy:
     money goes to the model as a string like '800.00'."""
-    return {**record, "amount": f"{record['amount']:.2f}"}
+    # the idempotency key stays inside the tool
+    out = {k: v for k, v in record.items()
+           if k != "idempotency_key"}
+    return {**out, "amount": f"{out['amount']:.2f}"}
 
 
-def _issue(order_id, amount, user_id, operation_id):
+def _issue(order_id, amount, user_id):
     """Shared checks and the write.
     Both refund tools go through here, so an
     amount edited at the approval step is checked again."""
@@ -101,7 +106,7 @@ def _issue(order_id, amount, user_id, operation_id):
         return _error("INVALID_AMOUNT",
                       "Amount must be greater than zero.")
 
-    key = _idempotency_key(operation_id, order_id, amount)
+    key = _idempotency_key(order_id, amount)
     if key in REFUNDS:
         # replay: return the original result, do not pay again
         return {"success": True,
@@ -139,7 +144,6 @@ def lookup_order(order_id: str,
 def search_policy(query: str) -> list[str]:
     """Search Northwind's current return and refund policy."""
     words = query.lower().split()
-    # FIX: the printed listing puts `or POLICY` on its own line, which is a SyntaxError.
     return ([p for p in POLICY
              if any(w in p.lower() for w in words)]
             or POLICY)
@@ -154,9 +158,7 @@ def issue_refund(order_id: str, amount: Decimal,
         # the rule lives in code, not in the prompt
         return _error("NEEDS_APPROVAL",
                       "Amount exceeds the automatic limit.")
-    ctx = runtime.context
-    return _issue(order_id, amount, ctx.user_id,
-                  ctx.refund_operation_id)
+    return _issue(order_id, amount, runtime.context.user_id)
 
 
 @tool
@@ -164,31 +166,34 @@ def issue_large_refund(order_id: str, amount: Decimal,
                        runtime: ToolRuntime[AppContext]) -> dict:
     """Issue a refund above ₹5,000.
     Runs only after a human approves."""
-    ctx = runtime.context
-    return _issue(order_id, amount, ctx.user_id,
-                  ctx.refund_operation_id)
+    return _issue(order_id, amount, runtime.context.user_id)
 
 
 # ---- as printed in the book: The agent ---------------------------------------
 # Framework: LangChain 1.x. Set ANTHROPIC_API_KEY before running.
 
-def build_agent(model="anthropic:claude-sonnet-5-5"):
+def build_agent(model="anthropic:claude-sonnet-5-5", checkpointer=None):
     return create_agent(
         model=model,
         tools=[lookup_order, search_policy, issue_refund,
                issue_large_refund],
         system_prompt=(
-            "You are a support agent for Northwind Retail. "  # FIX: printed text had stray backticks here
+            "You are a support agent for Northwind Retail. "
             "Always check the order and the policy before "
             "refunding. Refunds above ₹5,000 must use "
             "issue_large_refund."),
         context_schema=AppContext,
-        middleware=[HumanInTheLoopMiddleware(
-            interrupt_on={"issue_large_refund": {
-                "allowed_decisions": [
-                    "approve", "edit", "reject"]}})],
+        middleware=[
+            ModelCallLimitMiddleware(
+                run_limit=15, exit_behavior="end"),
+            ToolCallLimitMiddleware(run_limit=10),
+            HumanInTheLoopMiddleware(
+                interrupt_on={"issue_large_refund": {
+                    "allowed_decisions": [
+                        "approve", "edit", "reject"]}}),
+        ],
         # use a database checkpointer in production
-        checkpointer=InMemorySaver(),
+        checkpointer=checkpointer or InMemorySaver(),
     )
 
 
@@ -198,19 +203,25 @@ def run(agent, message: str, thread_id: str,
     config = {"configurable": {"thread_id": thread_id}}
     result = agent.invoke({"messages": [("user", message)]},
                           config=config,
-                          context=AppContext(
-                              user_id=user_id,
-                              refund_operation_id=thread_id))
+                          context=AppContext(user_id=user_id))
     return result, config
 
 
-def approve(agent, config, user_id: str = "u_1120"):
-    thread_id = config["configurable"]["thread_id"]
+AUDIT_LOG = []  # stands in for an audit table
+
+
+def approve(agent, config, approver_id: str,
+            user_id: str = "u_1120"):
+    # The authority check goes here. Look up approver_id in your
+    # identity system and confirm this person may approve the
+    # amount. Raise an error if not. The model never supplies it.
+    AUDIT_LOG.append({
+        "thread_id": config["configurable"]["thread_id"],
+        "approver_id": approver_id, "requested_by": user_id,
+        "decision": "approve"})
     return agent.invoke(
         Command(resume={"decisions": [{"type": "approve"}]}),
-        config=config,
-        context=AppContext(user_id=user_id,
-                           refund_operation_id=thread_id))
+        config=config, context=AppContext(user_id=user_id))
 
 
 # ---- as printed in the book: The evals ---------------------------------------

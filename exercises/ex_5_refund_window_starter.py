@@ -1,7 +1,7 @@
 """Exercise starter (end of Part 5): enforce the 30-day window inside the tool, not the prompt."""
 from decimal import Decimal
 
-from langchain_core.tools import tool
+from langchain.tools import tool
 
 APPROVAL_LIMIT = Decimal("5000")  # INR (₹)
 ORDERS = {

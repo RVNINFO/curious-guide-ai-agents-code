@@ -5,7 +5,7 @@ Live:  ANTHROPIC_API_KEY=... python -m ch03.l3_4_1_summarization_agent
 from langchain.agents import create_agent
 from langchain.agents.middleware import SummarizationMiddleware
 
-from ch03.l3_2_3_order_status_tool import get_order_status
+from ch03.l3_2_3_order_status_tool import lookup_order
 from ch03.l3_3_1_tool_schema import search_orders
 
 
@@ -14,7 +14,7 @@ def build_agent(model="anthropic:claude-sonnet-5-5",
                 trigger_tokens: int = 4000, keep_messages: int = 6):
     return create_agent(
         model=model,
-        tools=[get_order_status, search_orders],
+        tools=[lookup_order, search_orders],
         middleware=[
             SummarizationMiddleware(
                 model=summary_model,                # cheap model for the summary

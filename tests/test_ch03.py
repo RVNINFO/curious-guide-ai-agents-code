@@ -44,11 +44,11 @@ def test_agent_loop_step_limit():
 
 
 # ---- 3.2.3 / 3.3.1 ----
-def test_get_order_status():
-    from ch03.l3_2_3_order_status_tool import get_order_status
-    assert get_order_status.invoke({"order_id": "ORD-1234"})["carrier"] == "BlueDart"
-    assert "error" in get_order_status.invoke({"order_id": "ORD-0000"})
-    assert "Do NOT use this to find orders" in get_order_status.description
+def test_lookup_order():
+    from ch03.l3_2_3_order_status_tool import lookup_order
+    assert lookup_order.invoke({"order_id": "ORD-1234"})["carrier"] == "BlueDart"
+    assert "error" in lookup_order.invoke({"order_id": "ORD-0000"})
+    assert "Do NOT use this to find orders" in lookup_order.description
 
 
 def test_search_orders_schema_constraints_and_json_form_agree():
@@ -84,6 +84,7 @@ def _setup_registry():
     from ch03 import l3_3_4_execute_tool_call as m
     m.REGISTRY.clear()
     m.RATE_LIMITER.hits.clear()
+    m.BACKOFF_SECONDS = 0  # keep the retry tests fast
 
     class A(m.BaseModel):
         text: str
@@ -104,9 +105,37 @@ def test_pipeline_all_seven_stages():
     assert "Invalid arguments" in m.execute_tool_call(C("echo", {}), ctx)["message"]
     assert "permission" in m.execute_tool_call(C("admin", {"text": "x"}), ctx)["message"]
     assert m.execute_tool_call(C("pay", {"text": "x"}), ctx)["status"] == "PENDING_APPROVAL"
-    assert m.execute_tool_call(C("slow", {"text": "x"}), ctx, timeout_seconds=0.05)["message"].endswith("timed out.")
+    real = m.run_with_retry
+    m.run_with_retry = lambda fn, args, seconds, attempts: real(fn, args, 0.05, attempts)
+    try:
+        assert m.execute_tool_call(C("slow", {"text": "x"}), ctx)["message"].endswith("timed out.")
+    finally:
+        m.run_with_retry = real
     r = m.execute_tool_call(C("bad", {"text": "x"}), ctx)
-    assert r["message"] == "ERR_INTERNAL_FAILURE" and r["retryable"] is True
+    assert r["message"] == "The tool failed after retries." and r["retryable"] is False
+
+
+def test_pipeline_rate_limit_runs_before_approval():
+    m, ctx = _setup_registry()
+    C = m.ToolCall
+    for _ in range(5):
+        assert m.execute_tool_call(C("pay", {"text": "x"}), ctx)["status"] == "PENDING_APPROVAL"
+    # a looping agent cannot flood reviewers: the 6th request is rate limited, not queued
+    assert "Rate limit" in m.execute_tool_call(C("pay", {"text": "x"}), ctx)["message"]
+
+
+def test_pipeline_retries_transient_errors_then_succeeds():
+    m, ctx = _setup_registry()
+    calls = []
+
+    def flaky(text):
+        calls.append(1)
+        if len(calls) < 3:
+            raise ConnectionError("blip")
+        return text.upper()
+
+    m.REGISTRY["flaky"] = m.ToolSpec("flaky", flaky, m.REGISTRY["echo"].input_schema)
+    assert m.execute_tool_call(m.ToolCall("flaky", {"text": "ok"}), ctx) == "OK" and len(calls) == 3
 
 
 def test_pipeline_rate_limit_and_truncation():
@@ -120,7 +149,7 @@ def test_pipeline_rate_limit_and_truncation():
 # ---- 3.4.1 / 3.6.1 (agents built with real LangChain middleware, scripted models) ----
 def test_summarization_agent_builds_and_answers():
     from ch03.l3_4_1_summarization_agent import build_agent
-    model = ScriptedChatModel(script=[ai("", ("get_order_status", {"order_id": "ORD-1234"})),
+    model = ScriptedChatModel(script=[ai("", ("lookup_order", {"order_id": "ORD-1234"})),
                                       ai("It has shipped.")])
     agent = build_agent(model=model, summary_model=ScriptedChatModel(script=[ai("summary")]))
     out = agent.invoke({"messages": [("user", "Where is ORD-1234?")]})
@@ -275,6 +304,26 @@ def test_mcp_server_lists_and_calls_tool():
     assert book["response"]["result"]["tools"][0]["name"] == t.name
 
 
+def test_mcp_server_resource_and_prompt():
+    from ch03.l3_11_1_mcp_server import mcp
+
+    async def go():
+        resources = await mcp.list_resources()
+        content = await mcp.read_resource("translation://languages")
+        prompts = await mcp.list_prompts()
+        got = await mcp.render_prompt("translate_formally", {"text": "hello", "target_language": "Japanese"})
+        return resources, content, prompts, got
+
+    resources, content, prompts, got = asyncio.run(go())
+    res_wire = json.loads((DATA / "mcp_resources.jsonrpc.json").read_text(encoding="utf-8"))
+    prompt_wire = json.loads((DATA / "mcp_prompts.jsonrpc.json").read_text(encoding="utf-8"))
+    assert str(resources[0].uri) == res_wire["list"]["response"]["result"]["resources"][0]["uri"]
+    assert "Japanese, French, Spanish" in str(content)
+    assert prompts[0].name == prompt_wire["list"]["response"]["result"]["prompts"][0]["name"]
+    expected = prompt_wire["get"]["response"]["result"]["messages"][0]["content"]["text"]
+    assert got.messages[0].content.text == expected
+
+
 # ---- 3.12.3 A2A ----
 def test_a2a_client_async_task_flow():
     from ch03.l3_12_3_a2a_client import ask_agent
@@ -338,6 +387,30 @@ def test_a2a_client_paused_flow():
             ask_agent(c, "https://supplier.example.com", "t", "q", 0)
         assert exc.value.state == "TASK_STATE_INPUT_REQUIRED"
         assert "Which warehouse?" in exc.value.question
+        assert "TASK_STATE_INPUT_REQUIRED. Which warehouse?" in str(exc.value)  # space between f-strings
+
+
+def test_a2a_client_unique_message_ids_and_http_errors():
+    from ch03.l3_12_3_a2a_client import ask_agent
+    card = json.loads((DATA / "agent_card.json").read_text(encoding="utf-8"))
+    ids, fail = [], {"on": False}
+
+    def handler(req):
+        if req.url.path.endswith("agent-card.json"):
+            return httpx.Response(200, json=card)
+        if fail["on"]:
+            return httpx.Response(503, text="unavailable")
+        ids.append(json.loads(req.content)["params"]["message"]["messageId"])
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": "req-1",
+                                          "result": {"message": {"parts": [{"text": "yes"}]}}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+        ask_agent(c, "https://s.example.com", "t", "q", 0)
+        ask_agent(c, "https://s.example.com", "t", "q", 0)
+        assert len(set(ids)) == 2
+        fail["on"] = True
+        with pytest.raises(httpx.HTTPStatusError):
+            ask_agent(c, "https://s.example.com", "t", "q", 0)
 
 
 def test_a2a_client_timeout():

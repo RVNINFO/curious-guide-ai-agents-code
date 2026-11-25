@@ -1,6 +1,6 @@
 {
   "name": "search_orders",
-  "description": "Search for a customer's orders by email address.\n\nReturns up to 20 of the most recent orders, newest first. Use this when the customer has not given a specific order ID. If you already have an order ID, use get_order_status instead.",
+  "description": "Find orders by email. Use when no order ID is known.",
   "parameters": {
     "type": "object",
     "properties": {

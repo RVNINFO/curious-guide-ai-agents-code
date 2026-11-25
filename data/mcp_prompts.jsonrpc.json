@@ -1,0 +1,60 @@
+{
+  "list": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "prompts/list"
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": {
+        "prompts": [
+          {
+            "name": "translate_formally",
+            "description": "Ask for a formal translation.",
+            "arguments": [
+              {
+                "name": "text",
+                "required": true
+              },
+              {
+                "name": "target_language",
+                "required": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "get": {
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "method": "prompts/get",
+      "params": {
+        "name": "translate_formally",
+        "arguments": {
+          "text": "hello",
+          "target_language": "Japanese"
+        }
+      }
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "messages": [
+          {
+            "role": "user",
+            "content": {
+              "type": "text",
+              "text": "Translate this into Japanese, formally:\n\nhello"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -2,6 +2,7 @@
 Your solution should pass tests/test_exercises.py (swap the import to this module).
 A reference solution is in solutions/ex_3_1_5_agent_loop.py - try first!
 """
+import logging
 from dataclasses import dataclass, field
 
 
@@ -23,7 +24,8 @@ class Response:
 
 
 class FakeModel:
-    """Plays back a script of responses. Once the script ends, it repeats the last one."""
+    """Plays back a script of responses.
+    Once the script ends, it repeats the last one."""
     def __init__(self, script):
         self.script, self.i = script, 0
 
@@ -39,6 +41,19 @@ class Tool:
 
     def run(self, **kwargs):
         return self.fn(**kwargs)
+
+
+# Stubs so the loop from Section 3.1.5 runs unchanged.
+SYSTEM_PROMPT = ""
+logger = logging.getLogger(__name__)
+
+
+def validate(arguments, schema):
+    return None   # no problem found
+
+
+def allowed(tool, arguments):
+    return True
 
 
 def run_agent(model, user_input, tools, max_steps=5):

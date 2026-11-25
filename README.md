@@ -6,7 +6,7 @@ for the section → file map.
 ```bash
 python -m venv .venv && source .venv/bin/activate      # Python 3.11+
 pip install -r requirements.txt
-pytest -q                                              # 86 tests, ~6 s, no API key needed
+pytest -q                                              # 110 tests (6 live-only skipped), ~10 s, no API key needed
 python -m ch05.l5_11_1_capstone                        # the complete agent + evals, offline
 ```
 
